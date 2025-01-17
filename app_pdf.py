@@ -13,6 +13,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_text_splitters import CharacterTextSplitter
 from dotenv import load_dotenv
+import requests
 
 load_dotenv()
 
@@ -28,17 +29,21 @@ st.subheader("Upload a document to get started.")
 
 # Function to load PDF from file-like object
 @st.cache_data
-def load_pdf(file):
-    return fitz.open(stream=file, filetype="pdf")
+def load_pdf(url):
+    if isinstance(url, str) and url.startswith("http"):
+        response = requests.get(url)
+        return fitz.open(stream=response.content, filetype="pdf")
+    else:
+        st.error("Invalid file format. Please upload a valid PDF file.")
+        return None
 
 
-# Custom function to extract document objects from uploaded file
+# Custom function to extract document objects from a URL or uploaded file
 def extract_documents_from_file(file):
     # Create a temporary file
     temp_file = tempfile.NamedTemporaryFile(delete=False)
     temp_file.write(file)
     temp_file.close()
-
     loader = PyPDFLoader(temp_file.name)
 
     # Load the document
@@ -107,23 +112,34 @@ def get_qa(_documents):
 
 
 def get_highlight_info(doc, excerpts):
+    # left right bottom top    
+    metadata = {
+        "metadata": {
+            "position": [
+                {
+                    "coordinates": [ 150, 466, 93, 73 ],
+                    "page_number": 1
+                },
+                {
+                    "coordinates": [ 77, 538, 124, 108 ],
+                    "page_number": 1
+                }
+            ],
+        }
+    }  
     annotations = []
-    for page_num in range(len(doc)):
-        page = doc[page_num]
-        for excerpt in excerpts:
-            text_instances = page.search_for(excerpt)
-            if text_instances:
-                for inst in text_instances:
-                    annotations.append(
-                        {
-                            "page": page_num + 1,
-                            "x": inst.x0,
-                            "y": inst.y0,
-                            "width": inst.x1 - inst.x0,
-                            "height": inst.y1 - inst.y0,
-                            "color": "red",
-                        }
-                    )
+    position = metadata["metadata"]["position"]
+    for pos in position:
+        annotations.append(
+            {
+                "page": pos["page_number"],
+                "x": pos["coordinates"][0],
+                "y": pos["coordinates"][3],
+                "width": pos["coordinates"][1] - pos["coordinates"][0],
+                "height": pos["coordinates"][2] - pos["coordinates"][3],
+                "color": "red",
+            }
+        )
     return annotations
 
 
@@ -152,12 +168,10 @@ CUSTOM_PROMPT = PromptTemplate(
     template=custom_template, input_variables=["context", "question"]
 )
 
-uploaded_file = st.file_uploader("Choose a PDF file", type="pdf")
+uploaded_file_url = st.text_input("Enter the URL of a PDF file")
 
-
-if uploaded_file is not None:
-    file = uploaded_file.read()
-
+if uploaded_file_url:
+    file = requests.get(uploaded_file_url).content
     with st.spinner("Processing file..."):
         documents = extract_documents_from_file(file)
         st.session_state.doc = fitz.open(stream=io.BytesIO(file), filetype="pdf")

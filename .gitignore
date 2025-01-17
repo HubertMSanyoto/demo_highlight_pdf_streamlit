@@ -1,0 +1,12 @@
+# Start Generation Here
+# Python-related files to ignore
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+*.whl
+*.venv/
+*.env
+# End Generation Here
